@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  apex-ctrl:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: apex-ctrl-mission-control
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-MY_GEMINI_API_KEY}
+    restart: always
+    resources:
+      limits:
+        cpus: '1.5'
+        memory: 2G

@@ -1,0 +1,8 @@
+{
+  "name": "Apex Ctrl Pro",
+  "description": "An AI-powered Formula 1 Race Intelligence and Telemetry Platform utilizing local simulation and OpenF1 APIs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

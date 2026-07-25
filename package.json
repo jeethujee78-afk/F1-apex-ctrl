@@ -1,0 +1,18 @@
+{
+  "name": "f1-apex-ctrl",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n \"backend,frontend\" -c \"blue,green\" \"npm run dev -w apex-ctrl-backend\" \"npm run dev -w apex-ctrl-frontend\"",
+    "build": "npm run build -w apex-ctrl-backend && npm run build -w apex-ctrl-frontend",
+    "start": "npm run start -w apex-ctrl-backend",
+    "lint": "npm run lint -w apex-ctrl-frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,0 +1,15 @@
+                              Copyright © 2026 Jeethu G. All Rights Reserved.
+
+APEX CTRL is proprietary software developed and owned by Jeethu G.
+
+The source code, software architecture, user interface designs, analytics engines, replay systems, telemetry processing modules, AI-assisted strategy components, documentation, and associated assets are protected under applicable copyright and intellectual property laws.
+
+Permission is not granted to copy, modify, distribute, sublicense, reverse engineer, sell, publish, or create derivative works from this software without prior written authorization from the copyright holder.
+
+This repository is provided for portfolio, educational, demonstration, and evaluation purposes only.
+
+Third-party trademarks, team names, driver names, Formula 1 branding, and other intellectual property remain the property of their respective owners.
+
+APEX CTRL is an independent software project and is not affiliated with, endorsed by, sponsored by, or associated with Formula 1, Formula One Licensing B.V., FIA, OpenF1, or any Formula 1 team.
+
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.

@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "saved_analyses": {
+      "title": "Saved Analyses",
+      "description": "User saved GPT/Gemini racing strategy blueprints and telemetry deep dives",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique record identifier"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The UID of the owning user"
+        },
+        "sessionKey": {
+          "type": "string",
+          "description": "The corresponding F1 session key"
+        },
+        "title": {
+          "type": "string",
+          "description": "Visual title of the analysis report"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "The description prompt used to invoke the AI analysis model"
+        },
+        "report": {
+          "type": "string",
+          "description": "The full synthesized markdown strategy report"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when this record was compiled"
+        }
+      },
+      "required": ["id", "userId", "sessionKey", "title", "prompt", "report", "createdAt"]
+    }
+  },
+  "firestore": {
+    "saved_analyses/{analysisId}": {
+      "schema": "saved_analyses",
+      "description": "Saved telemetry and strategy reports"
+    }
+  }
+}

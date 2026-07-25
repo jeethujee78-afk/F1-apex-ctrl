@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default catch-all: Deny all reads and writes
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Standard high-security global helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // Validate a saved analysis document
+    function isValidSavedAnalysis(data) {
+      return data.id is string && data.id.size() <= 128
+          && data.userId is string && data.userId == request.auth.uid
+          && data.sessionKey is string && data.sessionKey.size() <= 64
+          && data.title is string && data.title.size() <= 500
+          && data.prompt is string && data.prompt.size() <= 2000
+          && data.report is string && data.report.size() <= 100000;
+    }
+
+    // Rules for saved analyses
+    match /saved_analyses/{analysisId} {
+      allow create: if isSignedIn()
+                    && isValidSavedAnalysis(incoming());
+
+      allow read, delete: if isSignedIn()
+                          && resource.data.userId == request.auth.uid;
+
+      allow update: if isSignedIn()
+                    && isValidSavedAnalysis(incoming())
+                    && resource.data.userId == request.auth.uid;
+    }
+  }
+}

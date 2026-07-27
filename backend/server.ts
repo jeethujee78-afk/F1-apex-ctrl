@@ -51,7 +51,7 @@ async function startServer() {
   setTimeout(warmCache, 5000);
 
   server = app.listen(config.PORT, "0.0.0.0", () => {
-    console.log(`[APEX CTRL SERVER] Listening on http://localhost:${config.PORT}`);
+   console.log(`[APEX CTRL SERVER] Listening on http://0.0.0.0:${config.PORT}`);
   });
 
   // Graceful shutdown handling for container instances (AWS ECS SIGTERM compliance)

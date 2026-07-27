@@ -9,7 +9,7 @@ on:
 
 env:
   AWS_REGION: us-east-1                  # Replace with your target AWS Region
-  ECR_REPOSITORY: apex-ctrl-backend       # Replace with your ECR Repository Name
+  ECR_REPOSITORY: apex-ctrl      # Replace with your ECR Repository Name
   ECS_CLUSTER: apex-ctrl-cluster          # Replace with your ECS Cluster Name
   ECS_SERVICE: apex-ctrl-backend-service  # Replace with your ECS Service Name
   ECS_TASK_DEFINITION: .aws/task-definition.json # Local path to task definition JSON

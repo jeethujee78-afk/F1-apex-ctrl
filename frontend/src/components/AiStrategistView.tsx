@@ -81,7 +81,9 @@ export default function AiStrategistView({
     try {
       const data = await analyzeSessionWithGemini({
         sessionName: session.session_name,
-        location: `${session.circuit_short_name}, ${session.country_name}`,
+       location:
+       `${session.circuit_short_name || session.meeting_name || "Unknown Circuit"}, ` +
+       `${session.country_name || session.location || "Unknown Country"}`,
         drivers: drivers.slice(0, 5).map((d) => d.name_acronym),
         driverData: top4Drivers,
         requestType,

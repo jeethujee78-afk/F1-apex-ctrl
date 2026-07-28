@@ -40,20 +40,45 @@ export async function getStrategy(req: Request, res: Response) {
     const systemPrompt = `You are the lead AI strategist and Lead Race Engineer for APEX CTRL, an elite F1 Race Mission Control telemetry intelligence system.
 Analyze the provided telemetry, lap timings, driver stats, and weather details to provide tactical pit stop strategies, advantage comparisons, and race winner predictions.
 Format your response securely and professionally in Markdown with bold titles, scannable bullet points, and high-fidelity, concise race management instructions. Do not use generic filler words. Be extremely direct and scientific as a race engineer.`;
+const analyzePrompt = `
+You are the Chief Race Engineer and AI Strategist for APEX CTRL.
 
-    const analyzePrompt = `
-CURRENT Grand Prix context:
+Analyze the following real Formula 1 session data and provide a professional race strategy report.
+
+SESSION INFORMATION
+- Grand Prix: ${req.body.sessionName || "Unknown"}
+- Location: ${req.body.location || "Unknown"}
+- Session Key: ${req.body.sessionKey}
 - Drivers: ${JSON.stringify(drivers || [])}
-- Weather metrics: ${JSON.stringify(weatherData || { temp: "28C", humidity: "62%" })}
-- Laps summarized: ${JSON.stringify((lapsData || []).slice(0, 15))}
+- Weather: ${JSON.stringify(weatherData || {})}
+- Recent Laps: ${JSON.stringify((lapsData || []).slice(0,20))}
 
-Provide:
-1. "AI STRATEGIST SUMMARY" checklist parameters.
-2. Complete Strategy overview comparing Lando Norris (McLaren) and Max Verstappen (Red Bull).
-3. Pit stop recommendations (lap windows, compound selection).
-4. Edge-cut margin analysis.
+Generate a report with these sections:
+
+# Executive Summary
+
+# Current Race Situation
+
+# Driver Performance Comparison
+
+# Pit Stop Strategy
+- Best pit window
+- Tyre recommendation
+- Undercut/Overcut opportunity
+
+# Weather Impact
+
+# Risk Assessment
+
+# AI Prediction
+- Winning probability
+- Overtake opportunities
+- Safety Car probability
+
+# Final Recommendation
+
+Keep the report concise, data-driven, and professional. Do not invent facts. If data is unavailable, clearly state that.
 `;
-
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: analyzePrompt,

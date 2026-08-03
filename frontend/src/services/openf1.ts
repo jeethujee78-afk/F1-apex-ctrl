@@ -351,7 +351,7 @@ export async function checkServerAvailability(): Promise<boolean> {
     try {
       const controller = new AbortController();
       const id = setTimeout(() => controller.abort(), 1800); // Fast 1.8s timeout
-      const res = await fetch("/api/health", { signal: controller.signal });
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/health`, { signal: controller.signal });
       clearTimeout(id);
       isServerAvailable = res.ok;
     } catch {
@@ -739,7 +739,10 @@ export async function fetchYears(): Promise<number[]> {
   }
 
   try {
-    const list = await requestManager.fetch("/api/openf1/years", { ttl: 12 * 60 * 60 * 1000 }); // 12 hours static TTL
+   const list = await requestManager.fetch(
+    `${import.meta.env.VITE_API_URL}/api/openf1/years`,
+    { ttl: 12 * 60 * 60 * 1000 }
+); // 12 hours static TTL
     return Array.isArray(list) && list.length > 0 ? list : CENTRALIZED_FALLBACK.years;
   } catch {
     return CENTRALIZED_FALLBACK.years;
@@ -919,7 +922,7 @@ export async function analyzeSessionWithGemini(body: {
   sessionKey?: string;
 }): Promise<any> {
   try {
-    const res = await fetch("/api/gemini/analyze", {
+   const res = await fetch(`${import.meta.env.VITE_API_URL}/api/gemini/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -952,7 +955,7 @@ export async function fetchStrategyPlanAPI(body: {
   weatherData: any;
 }): Promise<any> {
   try {
-    const res = await fetch("/api/gemini/strategy", {
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/gemini/strategy`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

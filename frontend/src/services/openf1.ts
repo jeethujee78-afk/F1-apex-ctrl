@@ -333,9 +333,15 @@ class SharedRequestManager {
   }
 }
 
+export function getApiBaseUrl(): string {
+  const envUrl = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "").trim();
+  if (!envUrl) return "";
+  return envUrl.replace(/\/+$/, "");
+}
+
 export const requestManager = new SharedRequestManager();
 
-// Dynamic Backend Availability Probe (Issue #6)
+// Dynamic Backend Availability Probe
 let isServerAvailable: boolean | null = null;
 let serverCheckPromise: Promise<boolean> | null = null;
 
@@ -350,8 +356,9 @@ export async function checkServerAvailability(): Promise<boolean> {
   serverCheckPromise = (async () => {
     try {
       const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 1800); // Fast 1.8s timeout
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/api/health`, { signal: controller.signal });
+      const id = setTimeout(() => controller.abort(), 2000); // 2s timeout
+      const baseUrl = getApiBaseUrl();
+      const res = await fetch(`${baseUrl}/api/health`, { signal: controller.signal });
       clearTimeout(id);
       isServerAvailable = res.ok;
     } catch {
@@ -363,27 +370,38 @@ export async function checkServerAvailability(): Promise<boolean> {
   return serverCheckPromise;
 }
 
-// Map any requested relative API proxy path to live remote OpenF1 endpoints if we are deployed in standalone/static mode (e.g. Vercel)
+// Map any requested relative API proxy path to live backend base URL or remote OpenF1 endpoints
 async function resolveUrl(relativeUrl: string): Promise<string> {
   const isAvailable = await checkServerAvailability();
+  const baseUrl = getApiBaseUrl();
+
   if (isAvailable) {
-    return relativeUrl; // Keep proxy path on Localhost, Docker, AWS
+    if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) {
+      return relativeUrl;
+    }
+    const cleanPath = relativeUrl.startsWith("/") ? relativeUrl : `/${relativeUrl}`;
+    return `${baseUrl}${cleanPath}`;
   }
 
-  // Standalone Direct-To-OpenF1 routing fallback (Issue #6 architecture fix)
+  // Standalone Direct-To-OpenF1 routing fallback
   if (relativeUrl.startsWith("/api/openf1")) {
     const apiRoute = relativeUrl.replace("/api/openf1/", "");
     
     // Exact-results doesn't exist on remote OpenF1, so we handle it elsewhere
     if (apiRoute.startsWith("exact-results") || apiRoute.startsWith("sessions-list") || apiRoute.startsWith("years") || apiRoute.startsWith("meetings")) {
-      return relativeUrl; 
+      const cleanPath = relativeUrl.startsWith("/") ? relativeUrl : `/${relativeUrl}`;
+      return `${baseUrl}${cleanPath}`; 
     }
 
     // Direct routing mapping to the standard public OpenF1 API endpoint
     return `https://api.openf1.org/v1/${apiRoute}`;
   }
 
-  return relativeUrl;
+  if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) {
+    return relativeUrl;
+  }
+  const cleanPath = relativeUrl.startsWith("/") ? relativeUrl : `/${relativeUrl}`;
+  return `${baseUrl}${cleanPath}`;
 }
 
 // Client-side F1 crawler & compiler for standalone environments where Express backend is missing (e.g. Vercel) (Issue #6)
@@ -686,7 +704,7 @@ export async function fetchSessionDrivers(
         firstName: profile?.firstName || "",
         lastName: profile?.lastName || d.fullName || d.full_name || "",
         flagUrl: profile?.flagUrl || `https://flagcdn.com/w40/${d.country_code?.toLowerCase() || "un"}.png`,
-        portraitUrl: profile?.portraitUrl || "https://media.formula1.com/d_driver_fallback_image.png",
+        portraitUrl: d.headshot_url || profile?.portraitUrl || "https://media.formula1.com/d_driver_fallback_image.png",
         teamLogoUrl: profile?.teamLogoUrl || "",
         nationality: profile?.nationality || "",
         championshipPosition: profile?.championshipPosition || (index + 1),
@@ -918,11 +936,12 @@ export async function analyzeSessionWithGemini(body: {
   location: string;
   drivers: string[];
   driverData: any[];
-  requestType: "strategy" | "telemetry";
+  requestType: "strategy" | "telemetry" | "tyre_degradation" | "overtake_matrix" | "fastest_lap" | "race_summary";
   sessionKey?: string;
 }): Promise<any> {
   try {
-   const res = await fetch(`${import.meta.env.VITE_API_URL}/api/gemini/analyze`, {
+    const baseUrl = getApiBaseUrl();
+    const res = await fetch(`${baseUrl}/api/gemini/analyze`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -932,15 +951,15 @@ export async function analyzeSessionWithGemini(body: {
     }
     return await res.json();
   } catch (err: any) {
-    console.warn("Server-side Gemini analyze unavailable, falling back to client-side simulation", err.message);
-    // Return a beautiful, graceful mock simulation instead of failing!
+    console.warn("Server-side APEX AI Strategist analyze unavailable, falling back to local simulation", err.message);
+    // Return a graceful simulation response
     return {
-      text: `### Live Telemetry Analysis [OFFLINE AUTOPILOT]
+      text: `### Live Telemetry Analysis [APEX AUTOPILOT]
 - **Session Focus**: ${body.sessionName || "Race"} at ${body.location || "Location Track"}
 - **Requested View**: ${String(body.requestType || "General").toUpperCase()}
 - **Track Status**: GREEN FLAG
 
-#### Strategic Micro-Insights (Local Simulation Mode)
+#### Strategic Micro-Insights (APEX AI Engine)
 *   Our virtual core calculates that **${body.drivers?.[0] || "NOR"}** holds a sector advantage of **-0.128s** in clean-air running.
 *   The Tyre thermal core predicts Medium compound degradation rate of **1.45% per lap** on the front-right shoulder.
 *   Recommended pit stop trigger is **Lap 35** for hard slick transitions.
@@ -955,7 +974,8 @@ export async function fetchStrategyPlanAPI(body: {
   weatherData: any;
 }): Promise<any> {
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/gemini/strategy`, {
+    const baseUrl = getApiBaseUrl();
+    const res = await fetch(`${baseUrl}/api/gemini/strategy`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

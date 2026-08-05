@@ -1,216 +1,248 @@
 import { Request, Response } from "express";
 import { GoogleGenAI } from "@google/genai";
+import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import { uploadReportToS3 } from "../services/awsService";
 
-export async function getStrategy(req: Request, res: Response) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-    // If API key is missing or is the placeholder, return a clever simulated strategy response
-    const reportText = "### AI STRATEGIST CRITICAL REPORT\n\n**Note: Live Gemini AI insights are running in offline mode. Configure GEMINI_API_KEY in the Secrets panel to fully enable server-side intelligence.**\n\nBased on real-time F1 Race intelligence metrics, our strategy neural networks advise the following:\n\n*   **Lando Norris (McLaren)**: Maintain hard charge. The visual telemetry indicates a clear corner exit advantage in Turns 3-5. Target pit window between Lap 37-40 for the Medium compounds.\n*   **Max Verstappen (Red Bull)**: Experiencing slight front-left tyre degradation. Top speed advantage on the back straight (331 km/h) is offset by corner entry instability. Pit window Lap 35-38 for Medium compounds.\n*   **Weather Projection**: Direct satellite feed indicates zero precipitation risks over the next 30 minutes of racing. Track status: GREEN FLAG.";
+let cachedSecretKey: string | null = null;
 
-    const sessionKey = req.body?.sessionData?.session_key || req.body?.sessionData?.sessionKey || "unknown";
-    const s3Key = `reports/${sessionKey}/strategy-${Date.now()}.md`;
-    uploadReportToS3(s3Key, reportText).catch(err => {
-      console.error("[AWS S3] Upload failed for simulated strategy report:", err.message);
-    });
+async function getGeminiApiKey(): Promise<string | undefined> {
+  if (cachedSecretKey) return cachedSecretKey;
+
+  // 1. Try environment variable FIRST (allows local env fallback for testing)
+  const envKey = process.env.GEMINI_API_KEY;
+  if (envKey && envKey !== "MY_GEMINI_API_KEY" && envKey.trim().length > 10) {
+    cachedSecretKey = envKey.trim();
+    return cachedSecretKey;
+  }
+
+  // 2. Try retrieving secret 'apex-ctrl/gemini' from AWS Secrets Manager
+  try {
+    const region = process.env.AWS_REGION || "ap-south-1";
+    const client = new SecretsManagerClient({ region });
+    const command = new GetSecretValueCommand({ SecretId: "apex-ctrl/gemini" });
+    const response = await client.send(command);
+
+    if (response.SecretString) {
+      try {
+        const parsed = JSON.parse(response.SecretString);
+        const key = parsed.GEMINI_API_KEY || parsed.api_key || parsed.apiKey || response.SecretString;
+        if (key && key !== "MY_GEMINI_API_KEY" && key.trim().length > 10) {
+          cachedSecretKey = key.trim();
+          console.log("[AWS Secrets Manager] Successfully loaded key from secret 'apex-ctrl/gemini'");
+          return cachedSecretKey;
+        }
+      } catch {
+        if (response.SecretString && response.SecretString !== "MY_GEMINI_API_KEY" && response.SecretString.trim().length > 10) {
+          cachedSecretKey = response.SecretString.trim();
+          console.log("[AWS Secrets Manager] Loaded raw string key from secret 'apex-ctrl/gemini'");
+          return cachedSecretKey;
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn("[AWS Secrets Manager] Secret 'apex-ctrl/gemini' lookup notice (falling back to env):", err.message);
+  }
+
+  return envKey;
+}
+
+async function generateGeminiResponse(prompt: string, apiKey: string): Promise<string> {
+  const ai = new GoogleGenAI({
+    apiKey: apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
+
+  const systemPrompt = `You are the Lead Race Engineer and Chief AI Strategist for APEX CTRL, an elite Formula 1 Mission Control system.
+Answer directly as a top-tier F1 race engineer.
+Your analysis MUST be fresh, unique, contextual, and derived directly from the provided OpenF1 session data, driver telemetry, lap timings, tire data, and weather parameters.
+Do NOT use predefined templates, simulated responses, or generic place-holders.
+If specific telemetry data (such as weather or sector splits) is not available in the provided dataset, state clearly and explicitly why that data is unavailable for this session (e.g., "Live weather telemetry feed unavailable for this session") instead of fabricating race analysis.
+Format your output professionally using clear Markdown with bold titles, data-driven bullet points, and actionable engineering insights.`;
+
+  const modelsToTry = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"];
+  let lastError: any = null;
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await ai.models.generateContent({
+        model: model,
+        contents: prompt,
+        config: {
+          systemInstruction: systemPrompt,
+          temperature: 0.3,
+        }
+      });
+      if (response.text) {
+        return response.text;
+      }
+    } catch (err: any) {
+      console.warn(`[Gemini Model ${model}] Error:`, err.message);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error("Failed to generate content from Gemini API.");
+}
+
+export async function getStrategy(req: Request, res: Response) {
+  const apiKey = await getGeminiApiKey();
+  const { sessionData, sessionName, location, sessionKey, drivers, lapsData, weatherData, tyreData } = req.body;
+
+  if (!apiKey) {
+    const errorNotice = `### APEX AI STRATEGIST REPORT
+
+**Status: Gemini API Key Not Configured**
+
+Unable to synthesize fresh race analysis because neither the AWS Secrets Manager secret (\`apex-ctrl/gemini\`) nor the \`GEMINI_API_KEY\` environment variable is set.
+
+Please set the \`apex-ctrl/gemini\` secret in AWS Secrets Manager or define \`GEMINI_API_KEY\` in your environment configuration to enable real-time Gemini AI race strategy generation.`;
 
     return res.json({
-      strategySummary: reportText,
-      aiStatus: "Offline Simulation Mode (Activate real-time insights via Secrets Panel)",
+      strategySummary: errorNotice,
+      aiStatus: "Offline Engine (Missing GEMINI_API_KEY / AWS Secret apex-ctrl/gemini)",
       predictions: [
-        { title: "Tyre Degradation", value: "Normal / Controlled", trend: "warning" },
-        { title: "Pace Trend", value: "McLaren Outpacing Red Bull inside sector 1", trend: "success" },
-        { title: "Under-cut / Over-cut Potential", value: "High under-cut threat from Verstappen at Lap 35", trend: "danger" }
+        { title: "AI Status", value: "Key Unconfigured", trend: "danger" },
+        { title: "Session", value: sessionName || "Race", trend: "warning" },
       ]
     });
   }
 
   try {
-    const { sessionData, drivers, lapsData, weatherData } = req.body;
+    const prompt = `
+Provide an APEX AI Race Strategy & Pit Window Report based on the following OpenF1 session dataset:
 
-    const ai = new GoogleGenAI({
-      apiKey: apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
+SESSION DETAILS:
+- Grand Prix / Session: ${sessionName || sessionData?.session_name || "Unknown Race"}
+- Location: ${location || sessionData?.location || "Unknown Location"}
+- Session Key: ${sessionKey || sessionData?.session_key || "N/A"}
 
-    const systemPrompt = `You are the lead AI strategist and Lead Race Engineer for APEX CTRL, an elite F1 Race Mission Control telemetry intelligence system.
-Analyze the provided telemetry, lap timings, driver stats, and weather details to provide tactical pit stop strategies, advantage comparisons, and race winner predictions.
-Format your response securely and professionally in Markdown with bold titles, scannable bullet points, and high-fidelity, concise race management instructions. Do not use generic filler words. Be extremely direct and scientific as a race engineer.`;
-const analyzePrompt = `
-You are the Chief Race Engineer and AI Strategist for APEX CTRL.
+ACTIVE DRIVERS TELEMETRY:
+${drivers ? JSON.stringify(drivers, null, 2) : "Driver list unavailable for this query."}
 
-Analyze the following real Formula 1 session data and provide a professional race strategy report.
+RECENT LAP ANALYSIS:
+${lapsData ? JSON.stringify((lapsData || []).slice(0, 20), null, 2) : "Live lap timings stream active based on current session order."}
 
-SESSION INFORMATION
-- Grand Prix: ${req.body.sessionName || "Unknown"}
-- Location: ${req.body.location || "Unknown"}
-- Session Key: ${req.body.sessionKey}
-- Drivers: ${JSON.stringify(drivers || [])}
-- Weather: ${JSON.stringify(weatherData || {})}
-- Recent Laps: ${JSON.stringify((lapsData || []).slice(0,20))}
+TYRE DATA:
+${tyreData ? JSON.stringify(tyreData, null, 2) : "Tire compound allocations and degradation telemetry."}
 
-Generate a report with these sections:
+WEATHER CONDITIONS:
+${weatherData ? JSON.stringify(weatherData, null, 2) : "Weather telemetry feed."}
 
-# Executive Summary
+Provide a complete, data-driven report formatted in Markdown covering:
+1. Executive Summary & Track Situation
+2. Driver Performance Comparison (pacing, top speeds, sector trends)
+3. Tactical Pit Stop Strategy & Tyre Recommendations (Undercut / Overcut potential)
+4. Risk Assessment & Safety Car Probability
+5. Final Race Engineer Recommendations
 
-# Current Race Situation
-
-# Driver Performance Comparison
-
-# Pit Stop Strategy
-- Best pit window
-- Tyre recommendation
-- Undercut/Overcut opportunity
-
-# Weather Impact
-
-# Risk Assessment
-
-# AI Prediction
-- Winning probability
-- Overtake opportunities
-- Safety Car probability
-
-# Final Recommendation
-
-Keep the report concise, data-driven, and professional. Do not invent facts. If data is unavailable, clearly state that.
+If any specific data point is missing from the payload, explain why instead of inventing facts.
 `;
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: analyzePrompt,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.2,
-      }
-    });
 
-    const strategySummary = response.text || "No strategy generated.";
-    const sessionKey = sessionData?.session_key || sessionData?.sessionKey || "unknown";
-    const s3Key = `reports/${sessionKey}/strategy-${Date.now()}.md`;
-    uploadReportToS3(s3Key, strategySummary).catch(err => {
-      console.error("[AWS S3] Upload failed for strategy report:", err.message);
-    });
+    const reportText = await generateGeminiResponse(prompt, apiKey);
+    const activeSessionKey = sessionKey || sessionData?.session_key || "unknown";
+    const s3Key = `reports/${activeSessionKey}/strategy-${Date.now()}.md`;
+    uploadReportToS3(s3Key, reportText).catch(err => console.error("[AWS S3] Upload failed:", err.message));
 
-    res.json({
-      strategySummary: strategySummary,
-      aiStatus: "Live AI Engine Activated",
+    return res.json({
+      strategySummary: reportText,
+      aiStatus: "APEX AI Neural Engine Active",
       predictions: [
-        { title: "Tyre Degradation", value: "Stable degradation on Medium compounds", trend: "success" },
-        { title: "Pace Advantage", value: "McLaren faster by 0.248s inside Sector 2", trend: "success" },
-        { title: "Pit Stop Action", value: "McLaren under-cut response required immediately", trend: "warning" }
+        { title: "AI Strategy", value: "Generated Live by Gemini", trend: "success" },
+        { title: "Telemetry Stream", value: "OpenF1 Synced", trend: "success" },
       ]
     });
+  } catch (err: any) {
+    console.error("[getStrategy Error]", err);
+    const errMsg = `### APEX AI STRATEGIST REPORT
 
-  } catch (error: any) {
-    console.log("[Simulation Link] High-fidelity simulated strategy response enabled.");
-    const fallbackText = "### Live AI STRATEGIST REPORT (MOCK AUTOPILOT MODE)\n\n**Note: Live Gemini AI Engine is currently experiencing high demand. Automatic backup telemetry system has taken over.**\n\nBased on live telemetry tracks and circuit elevation differentials, our strategist model advises:\n\n*   **Lando Norris (Lead Attack)**: Currently showing a strong Sector 1 trend, gaining 0.125s on entry. Tyre wear on Medium slick compound is well within thermal targets. Proceed with aggressive overcut at Lap 39.\n*   **Max Verstappen (Challenger)**: Sector 3 rear traction is marginal. DRS drag efficiency remains high at 14.8%. Pit stop window targeted for Lap 36 to shift to Hard compound slick strategy.\n*   **Weather update**: No immediate rain risk expected. Visual feedback: GREEN FLAG status.";
-    
-    const sessionKey = req.body?.sessionData?.session_key || req.body?.sessionData?.sessionKey || "unknown";
-    const s3Key = `reports/${sessionKey}/strategy-${Date.now()}.md`;
-    uploadReportToS3(s3Key, fallbackText).catch(err => {
-      console.error("[AWS S3] Upload failed for fallback strategy report:", err.message);
-    });
+**Error Generating Live Analysis**: ${err.message || "Gemini API request failed"}
 
-    res.json({
-      strategySummary: fallbackText,
-      aiStatus: "Autopilot Simulation Active",
+If OpenF1 session data or Gemini quota limits were encountered, please check API credentials or select a different active session.`;
+
+    return res.json({
+      strategySummary: errMsg,
+      aiStatus: "API Request Error",
       predictions: [
-        { title: "Tyre Degradation", value: "Stable degradation on Medium compounds", trend: "success" },
-        { title: "Pace Advantage", value: "McLaren faster by 0.248s inside Sector 2", trend: "success" },
-        { title: "Pit Stop Action", value: "McLaren under-cut response required immediately", trend: "warning" }
+        { title: "Status", value: "Error encountered", trend: "danger" }
       ]
     });
   }
 }
 
 export async function getAnalysis(req: Request, res: Response) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const { sessionName, location, drivers, driverData, requestType, sessionKey } = req.body;
-
+  const apiKey = await getGeminiApiKey();
+  const { sessionName, location, drivers, driverData, requestType, sessionKey, lapsData, weatherData, tyreData } = req.body;
   const activeSessionKey = sessionKey || "unknown";
 
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
-    const reportText = `### Live Telemetry Analysis [MOCK AUTOPILOT]
-- **Session Focus**: ${sessionName || "Race"} at ${location || "Location Track"}
-- **Requested View**: ${String(requestType || "General").toUpperCase()}
-- **Track Status**: GREEN FLAG
+  if (!apiKey) {
+    const errorNotice = `### Live Telemetry Analysis [APEX AI Engine]
 
-#### Strategic Micro-Insights (Simulated Mode)
-*   Our virtual core calculates that **${drivers?.[0] || "NOR"}** holds a sector advantage of **-0.128s** in clean-air running.
-*   The Tyre thermal core predicts Medium compound degradation rate of **1.45% per lap** on the front-right shoulder.
-*   Recommended pit stop trigger is **Lap 35** for hard slick transitions.
-*   Top-speed trim remains optimized dynamically.`;
+**Status: Gemini API Key Not Configured**
 
-    const s3Key = `reports/${activeSessionKey}/analysis-${requestType || 'general'}-${Date.now()}.md`;
-    uploadReportToS3(s3Key, reportText).catch(err => {
-      console.error("[AWS S3] Upload failed for simulated analysis report:", err.message);
-    });
+Unable to generate fresh AI telemetry analysis because neither the AWS Secrets Manager secret (\`apex-ctrl/gemini\`) nor the \`GEMINI_API_KEY\` environment variable is configured.
+
+Please set the \`apex-ctrl/gemini\` secret in AWS Secrets Manager or provide \`GEMINI_API_KEY\` in your environment to activate real-time Gemini race engineer analysis.`;
 
     return res.json({
-      text: reportText
+      text: errorNotice
     });
   }
 
   try {
-    const ai = new GoogleGenAI({
-      apiKey: apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
-    });
+    const prompt = `
+Provide a fresh, technical F1 Race Engineer analysis report based on the following OpenF1 session dataset:
 
-    const prompt = `You are the lead telemetry engineer for APEX CTRL. Produce a high-fidelity race analysis report.
-Grand Prix details:
-- Circuit: ${location || "Unknown"}
-- Session: ${sessionName || "Race"}
-- Analysis Requested: ${requestType || "Race Pace & Degradation"}
-- Active Driver Field: ${JSON.stringify(drivers || [])}
-- Primary Driver Data: ${JSON.stringify(driverData || [])}
+SESSION DETAILS:
+- Grand Prix / Circuit: ${location || "Unknown Circuit"}
+- Session Focus: ${sessionName || "Race"}
+- Session Key: ${activeSessionKey}
+- Intelligence Goal: ${String(requestType || "General Strategy").toUpperCase()}
 
-Provide a detailed, professional race analysis report formatted in markdown. Include specific references to sector splits, tyre thermal wear, pit stop strategies, and active pacing trends. Keep the tone highly technical, scientific, and realistic.`;
+ACTIVE DRIVERS FIELD:
+${drivers ? JSON.stringify(drivers) : "All active drivers"}
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        temperature: 0.2,
-      }
-    });
+PRIMARY DRIVER TELEMETRY & SPECS:
+${driverData ? JSON.stringify(driverData, null, 2) : "Driver specs unavailable in payload."}
 
-    const text = response.text || "Pace analysis compilation failed.";
+LAP ANALYSIS DATA:
+${lapsData ? JSON.stringify(lapsData, null, 2) : "Lap duration telemetry stream."}
+
+TYRE DEGRADATION & STINTS:
+${tyreData ? JSON.stringify(tyreData, null, 2) : "Tire compound life metrics."}
+
+ATMOSPHERIC & WEATHER TELEMETRY:
+${weatherData ? JSON.stringify(weatherData, null, 2) : "Weather data."}
+
+INSTRUCTIONS:
+- Act as the Chief Telemetry Engineer for APEX CTRL.
+- Generate a unique, contextual report in Markdown focused specifically on the goal '${requestType || "General Strategy"}'.
+- Refer directly to the drivers, lap times, tire compounds, and speeds supplied above.
+- If OpenF1 telemetry data for a metric is absent or incomplete in the payload, explain why instead of fabricating fake data.
+`;
+
+    const reportText = await generateGeminiResponse(prompt, apiKey);
     const s3Key = `reports/${activeSessionKey}/analysis-${requestType || 'general'}-${Date.now()}.md`;
-    uploadReportToS3(s3Key, text).catch(err => {
-      console.error("[AWS S3] Upload failed for analysis report:", err.message);
+    uploadReportToS3(s3Key, reportText).catch(err => console.error("[AWS S3] Upload failed:", err.message));
+
+    return res.json({
+      text: reportText
     });
+  } catch (err: any) {
+    console.error("[getAnalysis Error]", err);
+    const errMsg = `### Live Telemetry Analysis [APEX AI Engine]
 
-    res.json({
-      text: text
-    });
-  } catch (error: any) {
-    console.log("[Simulation Link] High-fidelity simulated analysis response fallback triggered.");
-    const fallbackText = `### Live Telemetry Analysis (AUTOPILOT OPTIMIZED)
-- **Session Focus**: ${sessionName || "Race"} at ${location || "Location Track"}
-- **Target Analysis**: ${String(requestType || "General").toUpperCase()}
-- **Database Status**: Sync Live Active
+**Error Executing Gemini Analysis**: ${err.message || "Failed to generate AI response"}
 
-#### Live Race Control Assessment
-*   Telemetry tracks show **${drivers?.[0] || "NOR"}** holding a pacing delta of **-0.088s** through Sector 2 turns.
-*   Estimated tyre life remaining on Medium Slick compound is **68%**. 
-*   Recommended action is to transition to **HARD Slick** compounds within the next pit window of **Lap 36-39** to maximize track-position defensive coverage.`;
+Please verify your Gemini API key or AWS Secrets Manager configuration (\`apex-ctrl/gemini\`).`;
 
-    const s3Key = `reports/${activeSessionKey}/analysis-${requestType || 'general'}-${Date.now()}.md`;
-    uploadReportToS3(s3Key, fallbackText).catch(err => {
-      console.error("[AWS S3] Upload failed for fallback analysis report:", err.message);
-    });
-
-    res.json({
-      text: fallbackText
+    return res.json({
+      text: errMsg
     });
   }
 }
+
+

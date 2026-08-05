@@ -97,8 +97,8 @@ export default function LoginView({
               <span className="text-emerald-400 font-bold">ONLINE</span>
             </div>
             <div className="flex justify-between border-b border-slate-900 pb-1.5">
-              <span>PILOT LEVEL</span>
-              <span className="text-slate-222">ASTRONAUT</span>
+              <span>TEAM STATUS</span>
+              <span className="text-slate-200">RACE ENGINEER</span>
             </div>
             <div className="flex justify-between">
               <span>FIREBASE PROTOCOL</span>
@@ -125,10 +125,10 @@ export default function LoginView({
           <div className="flex flex-col gap-1 text-center">
             <h3 className="text-white text-lg font-bold font-sans flex items-center justify-center gap-1.5">
               <ShieldCheck className="h-5 w-5 text-cyan-400" />
-              Pilot Authorization Terminal
+              Race Control Authentication
             </h3>
             <p className="text-[10px] text-slate-500 font-mono uppercase tracking-wider">
-              Secure Race Control Credentials Log
+              FIA Race Control Credentials
             </p>
           </div>
 
@@ -182,19 +182,19 @@ export default function LoginView({
               className="w-full mt-2 bg-slate-100 hover:bg-white disabled:bg-slate-800 text-slate-950 font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-all tracking-wide cursor-pointer uppercase shrink-0"
             >
               <LogIn className="h-4 w-4 shrink-0" />
-              {loading ? "Authenticating..." : isSignUp ? "Create Account" : "Access Race Control"}
+              {loading ? "Authenticating..." : isSignUp ? "Register Team Account" : "Enter Race Control"}
             </button>
           </form>
 
           {/* Tab toggler for register/login */}
           <div className="text-center font-mono text-[10px] text-slate-500 flex items-center justify-center gap-1.5">
-            <span>{isSignUp ? "Already have an authorization license?" : "Need a new flight license?"}</span>
+            <span>{isSignUp ? "Already have a Team Pass?" : "Need a new Team Pass?"}</span>
             <button
               type="button"
               onClick={() => setIsSignUp(!isSignUp)}
               className="text-cyan-400 font-extrabold hover:underline"
             >
-              {isSignUp ? "Sign In" : "Register Profile"}
+              {isSignUp ? "Sign In" : "Register Team Account"}
             </button>
           </div>
 

@@ -36,7 +36,7 @@ export default function SettingsView({
         </div>
       </div>
 
-      {/* Pilot Authorization Terminal (Firebase Auth Integration) */}
+      {/* Race Control Authentication (Firebase Auth Integration) */}
       <div className="p-1 border border-dashed border-slate-800 rounded-2xl">
         <LoginView
           user={user}

@@ -39,7 +39,7 @@ const PAGES_META = [
   { id: "dashboard", label: "DASHBOARD", icon: LayoutDashboard },
   { id: "live_timing", label: "LIVE TIMING", icon: Timer },
   { id: "telemetry", label: "TELEMETRY", icon: Activity },
-  { id: "ai_strategist", label: "AI STRATEGIST", icon: Cpu },
+  { id: "ai_strategist", label: "APEX AI STRATEGIST", icon: Cpu },
   { id: "lap_analysis", label: "LAP ANALYSIS", icon: BarChart3 },
   { id: "comparison", label: "DRIVER COMPARISON", icon: GitCompare },
   { id: "weather", label: "WEATHER", icon: CloudSun },

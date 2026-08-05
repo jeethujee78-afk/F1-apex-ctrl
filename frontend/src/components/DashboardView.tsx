@@ -697,7 +697,15 @@ export default function DashboardView({
                 
                 <div className="flex items-center gap-2">
                   <div className="w-9 h-9 rounded-full border border-slate-850 bg-[#0c1221] overflow-hidden flex items-end justify-center relative">
-                    <img src={p1.portraitUrl} alt={p1.fullName} className="w-full h-full object-contain scale-110 object-bottom" />
+                    <img 
+                      src={p1.portraitUrl} 
+                      alt={p1.fullName} 
+                      className="w-full h-full object-contain scale-110 object-bottom" 
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.src = "https://media.formula1.com/d_driver_fallback_image.png";
+                      }}
+                    />
                   </div>
                   <div>
                     <span className="text-[10px] font-mono block uppercase font-bold" style={{ color: p1.color }}>
@@ -743,7 +751,15 @@ export default function DashboardView({
                 
                 <div className="flex items-center gap-2">
                   <div className="w-9 h-9 rounded-full border border-slate-850 bg-[#0c1221] overflow-hidden flex items-end justify-center relative">
-                    <img src={p2.portraitUrl} alt={p2.fullName} className="w-full h-full object-contain scale-110 object-bottom" />
+                    <img 
+                      src={p2.portraitUrl} 
+                      alt={p2.fullName} 
+                      className="w-full h-full object-contain scale-110 object-bottom" 
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.src = "https://media.formula1.com/d_driver_fallback_image.png";
+                      }}
+                    />
                   </div>
                   <div>
                     <span className="text-[10px] font-mono block uppercase font-bold" style={{ color: p2.color }}>

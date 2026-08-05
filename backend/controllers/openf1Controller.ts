@@ -2,6 +2,9 @@ import { Request, Response } from "express";
 import { GoogleGenAI } from "@google/genai";
 import { logServerMetrics } from "../middleware/logging";
 import { getSessionCache, saveSessionCache } from "../services/awsService";
+import { OpenF1Repository } from "../services/OpenF1Repository";
+import { CacheRepository } from "../services/CacheRepository";
+import { StorageRepository } from "../services/StorageRepository";
 
 // Proxy helper for OpenF1 API with server-side in-memory caching and request deduplication
 interface CacheEntry {
@@ -240,119 +243,7 @@ async function revalidateOpenF1InBackground(cacheKey: string, endpoint: string, 
 }
 
 async function fetchOpenF1(endpoint: string, queryParams: Record<string, any> = {}) {
-  // Extract defined params and build a stable query object
-  const cleanParams: Record<string, string> = {};
-  Object.entries(queryParams).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      cleanParams[key] = String(value);
-    }
-  });
-
-  // Construct stable, sorted Cache Key to avoid variations in parameter ordering
-  const sortedKeys = Object.keys(cleanParams).sort();
-  const sortedParams: Record<string, string> = {};
-  sortedKeys.forEach((k) => {
-    sortedParams[k] = cleanParams[k];
-  });
-  const cacheKey = `${endpoint}:${JSON.stringify(sortedParams)}`;
-
-  const url = new URL(`https://api.openf1.org/v1/${endpoint}`);
-  Object.entries(cleanParams).forEach(([key, value]) => {
-    url.searchParams.append(key, value);
-  });
-  const urlString = url.toString();
-
-  const freshnessTTL = getFreshnessTTL(endpoint);
-  const cached = serverCache.get(cacheKey);
-
-  // 1. Check server-side cache and verify if it's fresh
-  if (cached) {
-    const isFresh = (Date.now() - cached.timestamp < freshnessTTL);
-    if (isFresh) {
-      logServerMetrics({
-        endpoint: urlString,
-        responseTimeMs: 0,
-        cacheHit: true,
-        cacheMiss: false,
-        retryCount: 0,
-        rateLimitDetected: false,
-        error: null
-      });
-      return cached.data;
-    } else {
-      logServerMetrics({
-        endpoint: urlString,
-        responseTimeMs: 0,
-        cacheHit: true,
-        cacheMiss: false,
-        retryCount: 0,
-        rateLimitDetected: false,
-        error: null
-      });
-      revalidateOpenF1InBackground(cacheKey, endpoint, sortedParams).catch(err => {
-        console.error(`[SWR Revalidation Failed] ${cacheKey}:`, err.message);
-      });
-      return cached.data; // Return stale data instantly to prevent blocking
-    }
-  }
-
-  // 2. Check and reuse in-flight request promise (Request Deduplication)
-  if (serverInFlight.has(cacheKey)) {
-    console.log(`[Deduplication] Sharing in-flight OpenF1 request for "${endpoint}" with params:`, sortedParams);
-    return serverInFlight.get(cacheKey);
-  }
-
-  const fetchPromise = (async () => {
-    const startTime = Date.now();
-    try {
-      console.log(`[API Fetch] Requesting OpenF1 remote API: ${urlString}`);
-      const result = await outgoingQueue.enqueue(() => fetchWithRetryAndBackoff(urlString));
-      const data = result.data || [];
-      
-      // Store in memory cache
-      serverCache.set(cacheKey, { data, timestamp: Date.now() });
-
-      logServerMetrics({
-        endpoint: urlString,
-        responseTimeMs: Date.now() - startTime,
-        cacheHit: false,
-        cacheMiss: true,
-        retryCount: result.retryCount,
-        rateLimitDetected: result.rateLimitDetected,
-        error: null
-      });
-
-      return data;
-    } catch (err: any) {
-      const retryCount = err?.retryCount ?? 0;
-      const rateLimitDetected = err?.rateLimitDetected ?? false;
-      const errorMessage = err?.error?.message ?? err?.message ?? String(err);
-
-      logServerMetrics({
-        endpoint: urlString,
-        responseTimeMs: Date.now() - startTime,
-        cacheHit: false,
-        cacheMiss: true,
-        retryCount,
-        rateLimitDetected,
-        error: errorMessage
-      });
-
-      console.warn(`Note: OpenF1 connection alert on ${endpoint} - returning fallback. Reason:`, errorMessage);
-      // If there was a cache entry already, even if expired, return it as fallback!
-      if (cached) {
-        console.log(`[Cache Fallback] Returning stale cached data for "${endpoint}" after fetch error`);
-        return cached.data;
-      }
-      return []; // Return empty dataset on absolute failure to maintain UI stability
-    } finally {
-      // Remove from in-flight requests once finished
-      serverInFlight.delete(cacheKey);
-    }
-  })();
-
-  serverInFlight.set(cacheKey, fetchPromise);
-  return fetchPromise;
+  return OpenF1Repository.fetchData(endpoint, queryParams);
 }
 
 // Cache pre-warming for active sessions

@@ -338,29 +338,48 @@ export default function StartupIntro({ onComplete }: StartupIntroProps) {
     }
   };
 
-  // Play F1 Engine Audio with autoplay block resolution
+  // Play F1 Engine Audio with interaction-based unlock permission
   const playF1Sound = () => {
     if (hasStartedRef.current) return;
     
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
+
       const ctx = new AudioCtx();
       audioContextRef.current = ctx;
 
-      hasStartedRef.current = true;
-      activeSoundRef.current = scheduleF1Engine(ctx);
+      const unlockAndPlay = () => {
+        try {
+          sessionStorage.setItem("apex_audio_unlocked", "true");
+          if (ctx.state === "suspended") {
+            ctx.resume().catch(() => {});
+          }
+          if (!hasStartedRef.current) {
+            hasStartedRef.current = true;
+            activeSoundRef.current = scheduleF1Engine(ctx);
+          }
+        } catch (err) {
+          console.warn("F1 audio resume failed:", err);
+        }
+      };
 
       if (ctx.state === "suspended") {
-        const resumeAudio = () => {
-          if (ctx.state === "suspended") {
-            ctx.resume();
-          }
-          window.removeEventListener("click", resumeAudio);
-          window.removeEventListener("pointerdown", resumeAudio);
+        const handleFirstInteraction = () => {
+          unlockAndPlay();
+          window.removeEventListener("click", handleFirstInteraction);
+          window.removeEventListener("pointerdown", handleFirstInteraction);
+          window.removeEventListener("keydown", handleFirstInteraction);
+          window.removeEventListener("touchstart", handleFirstInteraction);
         };
-        window.addEventListener("click", resumeAudio);
-        window.addEventListener("pointerdown", resumeAudio);
+        window.addEventListener("click", handleFirstInteraction);
+        window.addEventListener("pointerdown", handleFirstInteraction);
+        window.addEventListener("keydown", handleFirstInteraction);
+        window.addEventListener("touchstart", handleFirstInteraction);
+      } else {
+        hasStartedRef.current = true;
+        activeSoundRef.current = scheduleF1Engine(ctx);
+        sessionStorage.setItem("apex_audio_unlocked", "true");
       }
     } catch (e) {
       console.warn("F1 audio context ignition bypassed or blocked:", e);
@@ -368,10 +387,26 @@ export default function StartupIntro({ onComplete }: StartupIntroProps) {
   };
 
   useEffect(() => {
-    // Attempt auto-play sound on first user gesture or mount, fail silently
-    playF1Sound();
+    // Listen for first interaction to unlock audio safely without browser autoplay violations
+    const handleGlobalUnlock = () => {
+      playF1Sound();
+      window.removeEventListener("click", handleGlobalUnlock);
+      window.removeEventListener("pointerdown", handleGlobalUnlock);
+      window.removeEventListener("keydown", handleGlobalUnlock);
+      window.removeEventListener("touchstart", handleGlobalUnlock);
+    };
 
-    // Timer loop that updates elapsed time at 100ms intervals (more precise layout)
+    // If session already unlocked audio previously in this session
+    if (sessionStorage.getItem("apex_audio_unlocked") === "true") {
+      playF1Sound();
+    } else {
+      window.addEventListener("click", handleGlobalUnlock);
+      window.addEventListener("pointerdown", handleGlobalUnlock);
+      window.addEventListener("keydown", handleGlobalUnlock);
+      window.addEventListener("touchstart", handleGlobalUnlock);
+    }
+
+    // Timer loop that updates elapsed time at 100ms intervals
     let interval: NodeJS.Timeout;
     interval = setInterval(() => {
       setElapsed((prev) => {
@@ -385,6 +420,10 @@ export default function StartupIntro({ onComplete }: StartupIntroProps) {
 
     return () => {
       if (interval) clearInterval(interval);
+      window.removeEventListener("click", handleGlobalUnlock);
+      window.removeEventListener("pointerdown", handleGlobalUnlock);
+      window.removeEventListener("keydown", handleGlobalUnlock);
+      window.removeEventListener("touchstart", handleGlobalUnlock);
     };
   }, []);
 

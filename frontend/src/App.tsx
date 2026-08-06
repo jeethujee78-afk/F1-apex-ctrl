@@ -603,8 +603,17 @@ export default function App() {
         return (
           <AiStrategistView
             session={activeSessionObj}
-            drivers={rawDrivers}
+            drivers={drivers.length > 0 ? drivers : rawDrivers}
             userId={currentUser?.uid || null}
+            sessionContext={sessionContext}
+            years={years}
+            meetings={meetings}
+            sessions={sessions}
+            selectedMeetingKey={selectedMeetingKey}
+            selectedSessionKey={selectedSessionKey}
+            onYearChange={handleYearChangeAction}
+            onMeetingChange={handleMeetingChangeAction}
+            onSessionChange={handleSessionChangeAction}
           />
         );
       }
